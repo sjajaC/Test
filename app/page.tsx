@@ -179,7 +179,7 @@ export default function Page() {
   }, [compassMode, requestCompass]);
 
   return (
-    <main className="flex h-screen w-screen flex-col bg-slate-50">
+    <main className="fixed inset-0 flex flex-col bg-slate-50">
       <Header
         cityId={cityId}
         setCityId={setCityId}
@@ -226,7 +226,7 @@ export default function Page() {
         </div>
       )}
 
-      <div className="relative flex-1 overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         {loading && spots.length === 0 && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 text-sm text-smoke">
             {city.name} verisi çekiliyor...

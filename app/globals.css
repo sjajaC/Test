@@ -3,9 +3,10 @@
 @tailwind utilities;
 
 html,
-body,
-#__next {
+body {
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
