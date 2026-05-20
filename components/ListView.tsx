@@ -10,6 +10,7 @@ interface Props {
   onSelect: (id: string | null) => void;
   verdicts: Record<string, Verdict>;
   onVerdict: (id: string, v: Verdict | null) => void;
+  userLocation: { lat: number; lng: number } | null;
 }
 
 export default function ListView({
@@ -18,6 +19,7 @@ export default function ListView({
   onSelect,
   verdicts,
   onVerdict,
+  userLocation,
 }: Props) {
   if (spots.length === 0) {
     return (
@@ -43,6 +45,7 @@ export default function ListView({
               spot={spot}
               verdict={verdict}
               onVerdict={(v) => onVerdict(spot.id, v)}
+              userLocation={userLocation}
             />
           </li>
         );

@@ -3,6 +3,7 @@
 import type { SmokingSpot, SpotKind } from "@/lib/types";
 import type { Verdict } from "@/lib/verdict";
 import { googleMapsDirUrl } from "@/lib/url";
+import { formatDistance, haversineKm } from "@/lib/geo";
 
 const KIND_LABEL: Record<SpotKind, string> = {
   area: "Sigara Alanı",
@@ -32,6 +33,7 @@ interface Props {
   spot: SmokingSpot;
   verdict: Verdict | null;
   onVerdict: (v: Verdict | null) => void;
+  userLocation?: { lat: number; lng: number } | null;
   compact?: boolean;
   onFocus?: () => void;
 }
@@ -40,11 +42,15 @@ export default function SpotCard({
   spot,
   verdict,
   onVerdict,
+  userLocation,
   compact,
   onFocus,
 }: Props) {
   const smokingLabel = spot.smokingTag
     ? SMOKING_LABEL[spot.smokingTag] ?? spot.smokingTag
+    : null;
+  const distance = userLocation
+    ? haversineKm(userLocation, { lat: spot.lat, lng: spot.lng })
     : null;
 
   return (
@@ -87,6 +93,11 @@ export default function SpotCard({
         {spot.openingHours && (
           <span className="rounded bg-ash/60 px-1.5 py-0.5">
             ⏰ {spot.openingHours}
+          </span>
+        )}
+        {distance != null && (
+          <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
+            🚶 {formatDistance(distance)}
           </span>
         )}
       </div>

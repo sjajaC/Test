@@ -1,17 +1,24 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Header, { type Tab } from "@/components/Header";
 import ListView from "@/components/ListView";
-import { getCity } from "@/lib/cities";
+import { CITIES, getCity } from "@/lib/cities";
+import { findCityByCoords, haversineKm } from "@/lib/geo";
 import { fetchSpots, type FetchResult } from "@/lib/overpass";
 import type { SmokingSpot, SpotKind } from "@/lib/types";
-import { useVerdicts, type Verdict } from "@/lib/verdict";
+import { useVerdicts } from "@/lib/verdict";
 
 const Map = dynamic(() => import("@/components/Map"), { ssr: false });
 
 type Filter = "all" | SpotKind;
+
+interface UserLocation {
+  lat: number;
+  lng: number;
+  accuracy?: number;
+}
 
 export default function Page() {
   const [cityId, setCityId] = useState("tokyo");
@@ -28,39 +35,89 @@ export default function Page() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
+  const [recenterToken, setRecenterToken] = useState(0);
+  const autoLocatedOnce = useRef(false);
+
   const { verdicts, set: setVerdict, clearAll } = useVerdicts();
 
   const city = getCity(cityId);
 
-  const load = useCallback(
-    async (id: string, force = false) => {
-      const c = getCity(id);
-      setLoading(true);
-      setError(null);
-      try {
-        const res: FetchResult = await fetchSpots(c.id, c.bbox, { force });
-        setSpots(res.spots);
-        setFetchedAt(res.fetchedAt);
-        setStaleCache(res.staleCache);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Bilinmeyen hata";
-        setError(msg);
-        setSpots([]);
-        setFetchedAt(null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
+  const load = useCallback(async (id: string, force = false) => {
+    const c = getCity(id);
+    setLoading(true);
+    setError(null);
+    try {
+      const res: FetchResult = await fetchSpots(c.id, c.bbox, { force });
+      setSpots(res.spots);
+      setFetchedAt(res.fetchedAt);
+      setStaleCache(res.staleCache);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Bilinmeyen hata";
+      setError(msg);
+      setSpots([]);
+      setFetchedAt(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     load(cityId);
   }, [cityId, load]);
 
+  const locate = useCallback(
+    (recenter = true) => {
+      if (typeof navigator === "undefined" || !navigator.geolocation) {
+        setLocateError("Tarayıcı konum hizmetini desteklemiyor.");
+        return;
+      }
+      setLocating(true);
+      setLocateError(null);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const loc: UserLocation = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+          };
+          setUserLocation(loc);
+          setLocating(false);
+
+          // If user is inside one of our supported city bboxes, jump there.
+          const detected = findCityByCoords(loc.lat, loc.lng, CITIES);
+          if (detected && detected.id !== cityId) {
+            setCityId(detected.id);
+          }
+          if (recenter) setRecenterToken((t) => t + 1);
+        },
+        (err) => {
+          const messages: Record<number, string> = {
+            1: "Konum izni reddedildi. Tarayıcı ayarlarından izin ver.",
+            2: "Konum alınamadı (sinyal yok).",
+            3: "Konum isteği zaman aşımına uğradı.",
+          };
+          setLocateError(messages[err.code] ?? err.message ?? "Konum alınamadı.");
+          setLocating(false);
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
+      );
+    },
+    [cityId],
+  );
+
+  // Auto-request location on first mount.
+  useEffect(() => {
+    if (autoLocatedOnce.current) return;
+    autoLocatedOnce.current = true;
+    locate(true);
+  }, [locate]);
+
   const filteredSpots = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return spots.filter((s) => {
+    let list = spots.filter((s) => {
       if (filter !== "all" && s.kind !== filter) return false;
       if (hideMissing && verdicts[s.id] === "missing") return false;
       if (!q) return true;
@@ -70,7 +127,16 @@ export default function Page() {
         (s.address ?? "").toLowerCase().includes(q)
       );
     });
-  }, [spots, filter, hideMissing, verdicts, query]);
+    if (userLocation) {
+      const loc = userLocation;
+      list = [...list].sort(
+        (a, b) =>
+          haversineKm(loc, { lat: a.lat, lng: a.lng }) -
+          haversineKm(loc, { lat: b.lat, lng: b.lng }),
+      );
+    }
+    return list;
+  }, [spots, filter, hideMissing, verdicts, query, userLocation]);
 
   const verdictCount = useMemo(() => {
     const v = Object.values(verdicts);
@@ -98,6 +164,10 @@ export default function Page() {
         fetchedAt={fetchedAt}
         loading={loading}
         onRefresh={() => load(cityId, true)}
+        hasUserLocation={!!userLocation}
+        locating={locating}
+        locateError={locateError}
+        onLocate={() => (userLocation ? setRecenterToken((t) => t + 1) : locate(true))}
       />
 
       {(error || staleCache || verdictCount.missing + verdictCount.exists > 0) && (
@@ -142,6 +212,8 @@ export default function Page() {
             onSelect={setSelectedId}
             verdicts={verdicts}
             onVerdict={setVerdict}
+            userLocation={userLocation}
+            recenterToken={recenterToken}
           />
         </div>
 
@@ -159,6 +231,7 @@ export default function Page() {
             }}
             verdicts={verdicts}
             onVerdict={setVerdict}
+            userLocation={userLocation}
           />
         </div>
       </div>

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import {
+  Circle,
   MapContainer,
   Marker,
   Popup,
@@ -21,21 +22,31 @@ interface Props {
   onSelect: (id: string | null) => void;
   verdicts: Record<string, Verdict>;
   onVerdict: (id: string, v: Verdict | null) => void;
+  userLocation: { lat: number; lng: number; accuracy?: number } | null;
+  recenterToken: number;
 }
 
 function ViewController({
   center,
   zoom,
   selected,
+  userLocation,
+  recenterToken,
 }: {
   center: [number, number];
   zoom: number;
   selected: SmokingSpot | null;
+  userLocation: { lat: number; lng: number } | null;
+  recenterToken: number;
 }) {
   const map = useMap();
+
+  // City change: snap to that city.
   useEffect(() => {
     map.setView(center, zoom, { animate: true });
   }, [center, zoom, map]);
+
+  // Selected spot: fly to it.
   useEffect(() => {
     if (selected) {
       map.flyTo([selected.lat, selected.lng], Math.max(map.getZoom(), 16), {
@@ -43,10 +54,18 @@ function ViewController({
       });
     }
   }, [selected, map]);
+
+  // Recenter to user when token bumps.
+  useEffect(() => {
+    if (userLocation && recenterToken > 0) {
+      map.flyTo([userLocation.lat, userLocation.lng], 15, { duration: 0.7 });
+    }
+  }, [recenterToken, userLocation, map]);
+
   return null;
 }
 
-function buildIcon(spot: SmokingSpot, verdict: Verdict | null, selected: boolean) {
+function spotIcon(spot: SmokingSpot, verdict: Verdict | null, selected: boolean) {
   const icon = ({
     area: "🚬",
     cafe: "☕",
@@ -71,6 +90,13 @@ function buildIcon(spot: SmokingSpot, verdict: Verdict | null, selected: boolean
   });
 }
 
+const userIcon = L.divIcon({
+  className: "",
+  html: `<div style="background:#2563eb;width:18px;height:18px;border:3px solid white;border-radius:9999px;box-shadow:0 0 0 6px rgba(37,99,235,0.25);"></div>`,
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
 export default function Map({
   spots,
   center,
@@ -79,6 +105,8 @@ export default function Map({
   onSelect,
   verdicts,
   onVerdict,
+  userLocation,
+  recenterToken,
 }: Props) {
   const markerRefs = useRef<Record<string, L.Marker | null>>({});
   const selected = spots.find((s) => s.id === selectedId) ?? null;
@@ -105,7 +133,7 @@ export default function Map({
           <Marker
             key={spot.id}
             position={[spot.lat, spot.lng]}
-            icon={buildIcon(spot, verdict, spot.id === selectedId)}
+            icon={spotIcon(spot, verdict, spot.id === selectedId)}
             ref={(ref) => {
               markerRefs.current[spot.id] = ref;
             }}
@@ -119,6 +147,7 @@ export default function Map({
                 spot={spot}
                 verdict={verdict}
                 onVerdict={(v) => onVerdict(spot.id, v)}
+                userLocation={userLocation}
                 compact
               />
             </Popup>
@@ -126,7 +155,37 @@ export default function Map({
         );
       })}
 
-      <ViewController center={center} zoom={zoom} selected={selected} />
+      {userLocation && (
+        <>
+          <Marker
+            position={[userLocation.lat, userLocation.lng]}
+            icon={userIcon}
+            zIndexOffset={1000}
+          >
+            <Popup>Şu anki konumun</Popup>
+          </Marker>
+          {userLocation.accuracy && userLocation.accuracy < 1000 && (
+            <Circle
+              center={[userLocation.lat, userLocation.lng]}
+              radius={userLocation.accuracy}
+              pathOptions={{
+                color: "#2563eb",
+                fillColor: "#2563eb",
+                fillOpacity: 0.08,
+                weight: 1,
+              }}
+            />
+          )}
+        </>
+      )}
+
+      <ViewController
+        center={center}
+        zoom={zoom}
+        selected={selected}
+        userLocation={userLocation}
+        recenterToken={recenterToken}
+      />
     </MapContainer>
   );
 }

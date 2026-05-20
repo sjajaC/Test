@@ -23,6 +23,11 @@ interface Props {
   fetchedAt: number | null;
   loading: boolean;
   onRefresh: () => void;
+
+  hasUserLocation: boolean;
+  locating: boolean;
+  locateError: string | null;
+  onLocate: () => void;
 }
 
 export default function Header(props: Props) {
@@ -42,6 +47,10 @@ export default function Header(props: Props) {
     fetchedAt,
     loading,
     onRefresh,
+    hasUserLocation,
+    locating,
+    locateError,
+    onLocate,
   } = props;
 
   return (
@@ -61,15 +70,41 @@ export default function Header(props: Props) {
             )}
           </p>
         </div>
-        <button
-          onClick={onRefresh}
-          disabled={loading}
-          className="rounded-md border border-ash bg-white px-3 py-1.5 text-xs hover:bg-ash/40 disabled:opacity-50"
-          title="Verileri yeniden çek"
-        >
-          {loading ? "Yükleniyor..." : "↻ Yenile"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onLocate}
+            disabled={locating}
+            className={`rounded-md border px-3 py-1.5 text-xs disabled:opacity-50 ${
+              hasUserLocation
+                ? "border-blue-500 bg-blue-500 text-white hover:bg-blue-600"
+                : "border-ash bg-white text-ink hover:bg-ash/40"
+            }`}
+            title={
+              hasUserLocation
+                ? "Haritayı konumuma getir"
+                : "Konumumu kullan"
+            }
+          >
+            {locating
+              ? "Konum..."
+              : hasUserLocation
+                ? "📍 Konuma git"
+                : "📍 Konumum"}
+          </button>
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            className="rounded-md border border-ash bg-white px-3 py-1.5 text-xs hover:bg-ash/40 disabled:opacity-50"
+            title="Verileri yeniden çek"
+          >
+            {loading ? "Yükleniyor..." : "↻ Yenile"}
+          </button>
+        </div>
       </div>
+
+      {locateError && (
+        <p className="-mt-1 text-[11px] text-red-600">⚠ {locateError}</p>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <select
