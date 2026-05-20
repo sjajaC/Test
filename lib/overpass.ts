@@ -137,13 +137,9 @@ export async function fetchSpots(
   let lastErr: Error | null = null;
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: "data=" + encodeURIComponent(query),
-      });
+      // GET avoids the CORS preflight that some carriers/proxies break.
+      const url = endpoint + "?data=" + encodeURIComponent(query);
+      const res = await fetch(url, { method: "GET" });
       if (!res.ok) {
         lastErr = new Error(`${endpoint} → HTTP ${res.status}`);
         continue;
