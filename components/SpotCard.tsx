@@ -4,6 +4,8 @@ import type { SmokingSpot, SpotKind } from "@/lib/types";
 import type { Verdict } from "@/lib/verdict";
 import { googleMapsDirUrl } from "@/lib/url";
 import { formatDistance, haversineKm } from "@/lib/geo";
+import { isOpenNow } from "@/lib/openingHours";
+import { isCustomSpot, removeCustomSpot } from "@/lib/customSpots";
 
 const KIND_LABEL: Record<SpotKind, string> = {
   area: "Sigara Alanı",
@@ -29,6 +31,15 @@ const SMOKING_LABEL: Record<string, string> = {
   smoking: "Sigara izinli",
 };
 
+function formatWalkingTime(km: number): string {
+  const min = Math.round((km / 5) * 60);
+  if (min < 1) return "<1 dk";
+  if (min < 60) return `${min} dk`;
+  const h = Math.floor(min / 60);
+  const rem = min % 60;
+  return `${h} sa ${rem} dk`;
+}
+
 interface Props {
   spot: SmokingSpot;
   verdict: Verdict | null;
@@ -52,6 +63,8 @@ export default function SpotCard({
   const distance = userLocation
     ? haversineKm(userLocation, { lat: spot.lat, lng: spot.lng })
     : null;
+  const open = isOpenNow(spot.openingHours);
+  const custom = isCustomSpot(spot);
 
   return (
     <article
@@ -68,6 +81,11 @@ export default function SpotCard({
             <p className="truncate text-xs text-smoke">{spot.nameJa}</p>
           )}
         </div>
+        {custom && (
+          <span className="shrink-0 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700">
+            Benim
+          </span>
+        )}
         {verdict && (
           <span
             className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -90,6 +108,16 @@ export default function SpotCard({
             {smokingLabel}
           </span>
         )}
+        {open === true && (
+          <span className="rounded bg-green-100 px-1.5 py-0.5 text-green-700">
+            🟢 Şu an açık
+          </span>
+        )}
+        {open === false && (
+          <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-700">
+            🔴 Şu an kapalı
+          </span>
+        )}
         {spot.openingHours && (
           <span className="rounded bg-ash/60 px-1.5 py-0.5">
             ⏰ {spot.openingHours}
@@ -97,13 +125,16 @@ export default function SpotCard({
         )}
         {distance != null && (
           <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
-            🚶 {formatDistance(distance)}
+            🚶 {formatDistance(distance)} · {formatWalkingTime(distance)}
           </span>
         )}
       </div>
 
       {spot.address && (
         <p className="text-xs text-smoke">📍 {spot.address}</p>
+      )}
+      {spot.raw.notes && (
+        <p className="text-xs italic text-smoke">"{spot.raw.notes}"</p>
       )}
 
       <div className="flex flex-wrap gap-2 pt-1">
@@ -142,15 +173,29 @@ export default function SpotCard({
         >
           ✗ Yok
         </button>
-        <a
-          href={spot.osmUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="ml-auto text-[11px] text-smoke underline hover:text-ink"
-        >
-          OSM'de gör →
-        </a>
+        {custom ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (confirm("Bu noktayı sil?")) removeCustomSpot(spot.id);
+            }}
+            className="ml-auto text-[11px] text-red-600 underline hover:text-red-700"
+          >
+            Sil
+          </button>
+        ) : (
+          spot.osmUrl && (
+            <a
+              href={spot.osmUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="ml-auto text-[11px] text-smoke underline hover:text-ink"
+            >
+              OSM'de gör →
+            </a>
+          )
+        )}
       </div>
     </article>
   );

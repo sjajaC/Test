@@ -1,18 +1,47 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import L from "leaflet";
-import {
-  Circle,
-  MapContainer,
+import { useEffect, useMemo, useRef, useState } from "react";
+import maplibregl from "maplibre-gl";
+import type { StyleSpecification } from "maplibre-gl";
+import MapGL, {
+  GeolocateControl,
   Marker,
+  NavigationControl,
   Popup,
-  TileLayer,
-  useMap,
-} from "react-leaflet";
+  type MapRef,
+  type ViewStateChangeEvent,
+} from "react-map-gl/maplibre";
 import type { SmokingSpot } from "@/lib/types";
 import type { Verdict } from "@/lib/verdict";
 import SpotCard from "@/components/SpotCard";
+import { isCustomSpot } from "@/lib/customSpots";
+
+const OSM_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    osm: {
+      type: "raster",
+      tiles: [
+        "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      ],
+      tileSize: 256,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+    },
+  },
+  layers: [
+    { id: "osm", type: "raster", source: "osm", minzoom: 0, maxzoom: 19 },
+  ],
+};
+
+const KIND_ICON = {
+  area: "🚬",
+  cafe: "☕",
+  bar: "🍺",
+  restaurant: "🍽️",
+} as const;
 
 interface Props {
   spots: SmokingSpot[];
@@ -24,168 +53,181 @@ interface Props {
   onVerdict: (id: string, v: Verdict | null) => void;
   userLocation: { lat: number; lng: number; accuracy?: number } | null;
   recenterToken: number;
+  compassMode: boolean;
+  heading: number | null;
+  addMode: boolean;
+  onMapClickInAddMode: (coords: { lat: number; lng: number }) => void;
 }
 
-function ViewController({
-  center,
-  zoom,
-  selected,
-  userLocation,
-  recenterToken,
-}: {
-  center: [number, number];
-  zoom: number;
-  selected: SmokingSpot | null;
-  userLocation: { lat: number; lng: number } | null;
-  recenterToken: number;
-}) {
-  const map = useMap();
+export default function Map(props: Props) {
+  const {
+    spots,
+    center,
+    zoom,
+    selectedId,
+    onSelect,
+    verdicts,
+    onVerdict,
+    userLocation,
+    recenterToken,
+    compassMode,
+    heading,
+    addMode,
+    onMapClickInAddMode,
+  } = props;
 
-  // City change: snap to that city.
-  useEffect(() => {
-    map.setView(center, zoom, { animate: true });
-  }, [center, zoom, map]);
+  const mapRef = useRef<MapRef | null>(null);
+  const lastCityKey = useRef<string>("");
 
-  // Selected spot: fly to it.
+  // Snap to new city center.
   useEffect(() => {
-    if (selected) {
-      map.flyTo([selected.lat, selected.lng], Math.max(map.getZoom(), 16), {
-        duration: 0.6,
+    const key = `${center[0].toFixed(3)},${center[1].toFixed(3)}`;
+    if (key === lastCityKey.current) return;
+    lastCityKey.current = key;
+    mapRef.current?.flyTo({
+      center: [center[1], center[0]],
+      zoom,
+      duration: 800,
+    });
+  }, [center, zoom]);
+
+  // Fly to user when recenterToken bumps.
+  useEffect(() => {
+    if (recenterToken > 0 && userLocation) {
+      mapRef.current?.flyTo({
+        center: [userLocation.lng, userLocation.lat],
+        zoom: Math.max(mapRef.current.getZoom(), 15),
+        duration: 700,
       });
     }
-  }, [selected, map]);
+  }, [recenterToken, userLocation]);
 
-  // Recenter to user when token bumps.
+  // Fly to selected spot.
+  const selected = useMemo(
+    () => spots.find((s) => s.id === selectedId) ?? null,
+    [spots, selectedId],
+  );
   useEffect(() => {
-    if (userLocation && recenterToken > 0) {
-      map.flyTo([userLocation.lat, userLocation.lng], 15, { duration: 0.7 });
+    if (selected) {
+      mapRef.current?.flyTo({
+        center: [selected.lng, selected.lat],
+        zoom: Math.max(mapRef.current.getZoom(), 16),
+        duration: 600,
+      });
     }
-  }, [recenterToken, userLocation, map]);
+  }, [selected]);
 
-  return null;
-}
-
-function spotIcon(spot: SmokingSpot, verdict: Verdict | null, selected: boolean) {
-  const icon = ({
-    area: "🚬",
-    cafe: "☕",
-    bar: "🍺",
-    restaurant: "🍽️",
-  } as const)[spot.kind];
-  const bg =
-    verdict === "missing"
-      ? "#9ca3af"
-      : verdict === "exists"
-        ? "#16a34a"
-        : spot.kind === "area"
-          ? "#f97316"
-          : "#6366f1";
-  const opacity = verdict === "missing" ? 0.55 : 1;
-  const outline = selected ? "outline:3px solid #0f172a; outline-offset:2px;" : "";
-  return L.divIcon({
-    className: "",
-    html: `<div style="background:${bg};opacity:${opacity};width:30px;height:30px;border:2px solid white;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,.3);${outline}">${icon}</div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-  });
-}
-
-const userIcon = L.divIcon({
-  className: "",
-  html: `<div style="background:#2563eb;width:18px;height:18px;border:3px solid white;border-radius:9999px;box-shadow:0 0 0 6px rgba(37,99,235,0.25);"></div>`,
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-});
-
-export default function Map({
-  spots,
-  center,
-  zoom,
-  selectedId,
-  onSelect,
-  verdicts,
-  onVerdict,
-  userLocation,
-  recenterToken,
-}: Props) {
-  const markerRefs = useRef<Record<string, L.Marker | null>>({});
-  const selected = spots.find((s) => s.id === selectedId) ?? null;
-
+  // Compass mode: rotate map to current heading.
   useEffect(() => {
-    if (selectedId) markerRefs.current[selectedId]?.openPopup();
-  }, [selectedId]);
+    if (!compassMode || heading == null) return;
+    mapRef.current?.easeTo({ bearing: heading, duration: 200 });
+  }, [compassMode, heading]);
+
+  const handleClick = (e: maplibregl.MapMouseEvent) => {
+    if (addMode) {
+      onMapClickInAddMode({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      return;
+    }
+    onSelect(null);
+  };
 
   return (
-    <MapContainer
-      center={center}
-      zoom={zoom}
-      scrollWheelZoom
-      className="h-full w-full"
+    <MapGL
+      ref={mapRef}
+      mapStyle={OSM_STYLE}
+      initialViewState={{
+        longitude: center[1],
+        latitude: center[0],
+        zoom,
+      }}
+      style={{ width: "100%", height: "100%" }}
+      onClick={handleClick}
+      cursor={addMode ? "crosshair" : undefined}
+      maxZoom={19}
     >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      <NavigationControl
+        position="top-right"
+        showCompass
+        showZoom
+        visualizePitch={false}
+      />
+      <GeolocateControl
+        position="top-right"
+        positionOptions={{ enableHighAccuracy: true }}
+        trackUserLocation
       />
 
       {spots.map((spot) => {
         const verdict = verdicts[spot.id] ?? null;
+        const isCustom = isCustomSpot(spot);
+        const bg =
+          verdict === "missing"
+            ? "#9ca3af"
+            : verdict === "exists"
+              ? "#16a34a"
+              : isCustom
+                ? "#a855f7"
+                : spot.kind === "area"
+                  ? "#f97316"
+                  : "#6366f1";
+        const opacity = verdict === "missing" ? 0.55 : 1;
+        const isSel = spot.id === selectedId;
         return (
           <Marker
             key={spot.id}
-            position={[spot.lat, spot.lng]}
-            icon={spotIcon(spot, verdict, spot.id === selectedId)}
-            ref={(ref) => {
-              markerRefs.current[spot.id] = ref;
-            }}
-            eventHandlers={{
-              click: () => onSelect(spot.id),
-              popupclose: () => onSelect(null),
+            longitude={spot.lng}
+            latitude={spot.lat}
+            anchor="center"
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              onSelect(spot.id);
             }}
           >
-            <Popup minWidth={260} maxWidth={300}>
-              <SpotCard
-                spot={spot}
-                verdict={verdict}
-                onVerdict={(v) => onVerdict(spot.id, v)}
-                userLocation={userLocation}
-                compact
-              />
-            </Popup>
+            <div
+              style={{
+                background: bg,
+                opacity,
+                width: 30,
+                height: 30,
+                border: "2px solid white",
+                borderRadius: 9999,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+                fontSize: 14,
+                boxShadow: "0 2px 6px rgba(0,0,0,.3)",
+                outline: isSel ? "3px solid #0f172a" : undefined,
+                outlineOffset: isSel ? 2 : undefined,
+                cursor: "pointer",
+              }}
+            >
+              {KIND_ICON[spot.kind]}
+            </div>
           </Marker>
         );
       })}
 
-      {userLocation && (
-        <>
-          <Marker
-            position={[userLocation.lat, userLocation.lng]}
-            icon={userIcon}
-            zIndexOffset={1000}
-          >
-            <Popup>Şu anki konumun</Popup>
-          </Marker>
-          {userLocation.accuracy && userLocation.accuracy < 1000 && (
-            <Circle
-              center={[userLocation.lat, userLocation.lng]}
-              radius={userLocation.accuracy}
-              pathOptions={{
-                color: "#2563eb",
-                fillColor: "#2563eb",
-                fillOpacity: 0.08,
-                weight: 1,
-              }}
-            />
-          )}
-        </>
+      {selected && (
+        <Popup
+          longitude={selected.lng}
+          latitude={selected.lat}
+          anchor="bottom"
+          offset={20}
+          closeButton
+          closeOnClick={false}
+          onClose={() => onSelect(null)}
+          maxWidth="320px"
+        >
+          <SpotCard
+            spot={selected}
+            verdict={verdicts[selected.id] ?? null}
+            onVerdict={(v) => onVerdict(selected.id, v)}
+            userLocation={userLocation}
+            compact
+          />
+        </Popup>
       )}
-
-      <ViewController
-        center={center}
-        zoom={zoom}
-        selected={selected}
-        userLocation={userLocation}
-        recenterToken={recenterToken}
-      />
-    </MapContainer>
+    </MapGL>
   );
 }

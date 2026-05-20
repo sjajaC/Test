@@ -4,11 +4,16 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Header, { type Tab } from "@/components/Header";
 import ListView from "@/components/ListView";
+import BottomTabs from "@/components/BottomTabs";
+import AddSpotDialog from "@/components/AddSpotDialog";
 import { CITIES, getCity } from "@/lib/cities";
 import { findCityByCoords, haversineKm } from "@/lib/geo";
 import { fetchSpots, type FetchResult } from "@/lib/overpass";
 import type { SmokingSpot, SpotKind } from "@/lib/types";
 import { useVerdicts } from "@/lib/verdict";
+import { useCustomSpots, addCustomSpot } from "@/lib/customSpots";
+import { isOpenNow } from "@/lib/openingHours";
+import { useHeading } from "@/lib/heading";
 
 const Map = dynamic(() => import("@/components/Map"), { ssr: false });
 
@@ -26,6 +31,7 @@ export default function Page() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [hideMissing, setHideMissing] = useState(true);
+  const [openNow, setOpenNow] = useState(false);
 
   const [spots, setSpots] = useState<SmokingSpot[]>([]);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
@@ -41,7 +47,17 @@ export default function Page() {
   const [recenterToken, setRecenterToken] = useState(0);
   const autoLocatedOnce = useRef(false);
 
+  const [compassMode, setCompassMode] = useState(false);
+  const { heading, error: compassError, request: requestCompass } =
+    useHeading(compassMode);
+
+  const [addMode, setAddMode] = useState(false);
+  const [addCoords, setAddCoords] = useState<{ lat: number; lng: number } | null>(
+    null,
+  );
+
   const { verdicts, set: setVerdict, clearAll } = useVerdicts();
+  const customSpots = useCustomSpots();
 
   const city = getCity(cityId);
 
@@ -85,19 +101,15 @@ export default function Page() {
           };
           setUserLocation(loc);
           setLocating(false);
-
-          // If user is inside one of our supported city bboxes, jump there.
           const detected = findCityByCoords(loc.lat, loc.lng, CITIES);
-          if (detected && detected.id !== cityId) {
-            setCityId(detected.id);
-          }
+          if (detected && detected.id !== cityId) setCityId(detected.id);
           if (recenter) setRecenterToken((t) => t + 1);
         },
         (err) => {
           const messages: Record<number, string> = {
-            1: "Konum izni reddedildi. Tarayıcı ayarlarından izin ver.",
-            2: "Konum alınamadı (sinyal yok).",
-            3: "Konum isteği zaman aşımına uğradı.",
+            1: "Konum izni reddedildi.",
+            2: "Konum alınamadı.",
+            3: "Konum zaman aşımı.",
           };
           setLocateError(messages[err.code] ?? err.message ?? "Konum alınamadı.");
           setLocating(false);
@@ -108,18 +120,29 @@ export default function Page() {
     [cityId],
   );
 
-  // Auto-request location on first mount.
   useEffect(() => {
     if (autoLocatedOnce.current) return;
     autoLocatedOnce.current = true;
     locate(true);
   }, [locate]);
 
+  const combinedSpots = useMemo(() => {
+    const bbox = city.bbox;
+    const inBbox = customSpots.filter(
+      (s) => s.lat >= bbox[0] && s.lat <= bbox[2] && s.lng >= bbox[1] && s.lng <= bbox[3],
+    );
+    return [...inBbox, ...spots];
+  }, [spots, customSpots, city.bbox]);
+
   const filteredSpots = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let list = spots.filter((s) => {
+    let list = combinedSpots.filter((s) => {
       if (filter !== "all" && s.kind !== filter) return false;
       if (hideMissing && verdicts[s.id] === "missing") return false;
+      if (openNow) {
+        const open = isOpenNow(s.openingHours);
+        if (open !== true) return false;
+      }
       if (!q) return true;
       return (
         s.name.toLowerCase().includes(q) ||
@@ -136,7 +159,7 @@ export default function Page() {
       );
     }
     return list;
-  }, [spots, filter, hideMissing, verdicts, query, userLocation]);
+  }, [combinedSpots, filter, hideMissing, openNow, verdicts, query, userLocation]);
 
   const verdictCount = useMemo(() => {
     const v = Object.values(verdicts);
@@ -145,6 +168,15 @@ export default function Page() {
       missing: v.filter((x) => x === "missing").length,
     };
   }, [verdicts]);
+
+  const onToggleCompass = useCallback(async () => {
+    if (!compassMode) {
+      await requestCompass();
+      setCompassMode(true);
+    } else {
+      setCompassMode(false);
+    }
+  }, [compassMode, requestCompass]);
 
   return (
     <main className="flex h-screen w-screen flex-col bg-slate-50">
@@ -157,9 +189,9 @@ export default function Page() {
         setFilter={setFilter}
         hideMissing={hideMissing}
         setHideMissing={setHideMissing}
-        tab={tab}
-        setTab={setTab}
-        totalCount={spots.length}
+        openNow={openNow}
+        setOpenNow={setOpenNow}
+        totalCount={combinedSpots.length}
         filteredCount={filteredSpots.length}
         fetchedAt={fetchedAt}
         loading={loading}
@@ -167,26 +199,26 @@ export default function Page() {
         hasUserLocation={!!userLocation}
         locating={locating}
         locateError={locateError}
-        onLocate={() => (userLocation ? setRecenterToken((t) => t + 1) : locate(true))}
+        onLocate={() =>
+          userLocation ? setRecenterToken((t) => t + 1) : locate(true)
+        }
+        compassMode={compassMode}
+        onToggleCompass={onToggleCompass}
+        compassError={compassError}
+        addMode={addMode}
+        onToggleAddMode={() => setAddMode((v) => !v)}
       />
 
-      {(error || staleCache || verdictCount.missing + verdictCount.exists > 0) && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-ash bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900">
-          {error && (
-            <span>
-              ⚠ Veri çekilemedi: {error}. Yeniden dene veya başka şehir seç.
-            </span>
-          )}
-          {staleCache && !error && (
-            <span>📦 Önbellekten eski veri gösteriliyor.</span>
-          )}
+      {(error ||
+        staleCache ||
+        verdictCount.missing + verdictCount.exists > 0) && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-ash bg-amber-50 px-3 py-1 text-[11px] text-amber-900">
+          {error && <span>⚠ {error}</span>}
+          {staleCache && !error && <span>📦 Önbellekten gösteriliyor.</span>}
           {verdictCount.exists + verdictCount.missing > 0 && (
             <span className="ml-auto">
-              İşaretlerin: ✔ {verdictCount.exists} · ✗ {verdictCount.missing}
-              <button
-                onClick={clearAll}
-                className="ml-2 underline hover:text-amber-700"
-              >
+              ✔ {verdictCount.exists} · ✗ {verdictCount.missing}
+              <button onClick={clearAll} className="ml-2 underline">
                 temizle
               </button>
             </span>
@@ -201,9 +233,7 @@ export default function Page() {
           </div>
         )}
 
-        <div
-          className={`absolute inset-0 ${tab === "map" ? "" : "invisible"}`}
-        >
+        <div className={`absolute inset-0 ${tab === "map" ? "" : "invisible"}`}>
           <Map
             spots={filteredSpots}
             center={city.center}
@@ -214,6 +244,13 @@ export default function Page() {
             onVerdict={setVerdict}
             userLocation={userLocation}
             recenterToken={recenterToken}
+            compassMode={compassMode}
+            heading={heading}
+            addMode={addMode}
+            onMapClickInAddMode={(c) => {
+              setAddCoords(c);
+              setAddMode(false);
+            }}
           />
         </div>
 
@@ -236,10 +273,33 @@ export default function Page() {
         </div>
       </div>
 
-      <footer className="border-t border-ash bg-white px-3 py-1.5 text-[10px] text-smoke">
-        Veri © OpenStreetMap katkıda bulunanlar · Sahada teyit edin · Yön
-        Google Maps üzerinden açılır.
-      </footer>
+      <BottomTabs
+        tab={tab}
+        setTab={setTab}
+        onAdd={() => {
+          setAddMode((v) => !v);
+          setTab("map");
+        }}
+        addActive={addMode}
+      />
+
+      {addCoords && (
+        <AddSpotDialog
+          coords={addCoords}
+          onCancel={() => setAddCoords(null)}
+          onSave={(data) => {
+            const created = addCustomSpot({
+              name: data.name,
+              kind: data.kind,
+              lat: addCoords.lat,
+              lng: addCoords.lng,
+              notes: data.notes,
+            });
+            setAddCoords(null);
+            setSelectedId(created.id);
+          }}
+        />
+      )}
     </main>
   );
 }
