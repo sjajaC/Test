@@ -18,30 +18,9 @@ body {
   z-index: 0;
 }
 
-.smoking-marker {
-  background: #f97316;
-  border: 2px solid white;
-  border-radius: 9999px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 14px;
+.leaflet-popup-content {
+  margin: 8px 10px;
 }
-
-.smoking-marker--cafe {
-  background: #6366f1;
-}
-
-.smoking-marker--selected {
-  outline: 3px solid #0f172a;
-  outline-offset: 2px;
-}
-
-.user-marker {
-  background: #22c55e;
-  border: 3px solid white;
-  border-radius: 9999px;
-  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.25);
+.leaflet-popup-content-wrapper {
+  border-radius: 10px;
 }

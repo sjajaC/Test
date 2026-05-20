@@ -1,97 +1,96 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import L, { LatLngExpression } from "leaflet";
+import { useEffect, useRef } from "react";
+import L from "leaflet";
 import {
   MapContainer,
   Marker,
   Popup,
-  Polyline,
   TileLayer,
   useMap,
 } from "react-leaflet";
-import type { SmokingSpot } from "@/data/spots";
+import type { SmokingSpot } from "@/lib/types";
+import type { Verdict } from "@/lib/verdict";
+import SpotCard from "@/components/SpotCard";
 
-interface MapProps {
+interface Props {
   spots: SmokingSpot[];
+  center: [number, number];
+  zoom: number;
   selectedId: string | null;
-  onSelect: (id: string) => void;
-  routeFrom: { lat: number; lng: number } | null;
-  routeTo: SmokingSpot | null;
-  routeGeometry: LatLngExpression[] | null;
+  onSelect: (id: string | null) => void;
+  verdicts: Record<string, Verdict>;
+  onVerdict: (id: string, v: Verdict | null) => void;
 }
 
-function FlyTo({ position }: { position: LatLngExpression | null }) {
+function ViewController({
+  center,
+  zoom,
+  selected,
+}: {
+  center: [number, number];
+  zoom: number;
+  selected: SmokingSpot | null;
+}) {
   const map = useMap();
   useEffect(() => {
-    if (position) {
-      map.flyTo(position, 16, { duration: 0.8 });
+    map.setView(center, zoom, { animate: true });
+  }, [center, zoom, map]);
+  useEffect(() => {
+    if (selected) {
+      map.flyTo([selected.lat, selected.lng], Math.max(map.getZoom(), 16), {
+        duration: 0.6,
+      });
     }
-  }, [position, map]);
+  }, [selected, map]);
   return null;
 }
 
-function FitToRoute({ points }: { points: LatLngExpression[] | null }) {
-  const map = useMap();
-  useEffect(() => {
-    if (points && points.length > 1) {
-      const bounds = L.latLngBounds(points as L.LatLngTuple[]);
-      map.fitBounds(bounds, { padding: [60, 60] });
-    }
-  }, [points, map]);
-  return null;
-}
-
-function buildIcon(kind: "area" | "cafe", selected: boolean) {
-  const label = kind === "cafe" ? "☕" : "🚬";
-  const cls = [
-    "smoking-marker",
-    kind === "cafe" ? "smoking-marker--cafe" : "",
-    selected ? "smoking-marker--selected" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+function buildIcon(spot: SmokingSpot, verdict: Verdict | null, selected: boolean) {
+  const icon = ({
+    area: "🚬",
+    cafe: "☕",
+    bar: "🍺",
+    restaurant: "🍽️",
+  } as const)[spot.kind];
+  const bg =
+    verdict === "missing"
+      ? "#9ca3af"
+      : verdict === "exists"
+        ? "#16a34a"
+        : spot.kind === "area"
+          ? "#f97316"
+          : "#6366f1";
+  const opacity = verdict === "missing" ? 0.55 : 1;
+  const outline = selected ? "outline:3px solid #0f172a; outline-offset:2px;" : "";
   return L.divIcon({
     className: "",
-    html: `<div class="${cls}" style="width:30px;height:30px;">${label}</div>`,
+    html: `<div style="background:${bg};opacity:${opacity};width:30px;height:30px;border:2px solid white;border-radius:9999px;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,.3);${outline}">${icon}</div>`,
     iconSize: [30, 30],
     iconAnchor: [15, 15],
   });
 }
 
-const userIcon = L.divIcon({
-  className: "",
-  html: `<div class="user-marker" style="width:18px;height:18px;"></div>`,
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-});
-
 export default function Map({
   spots,
+  center,
+  zoom,
   selectedId,
   onSelect,
-  routeFrom,
-  routeTo,
-  routeGeometry,
-}: MapProps) {
-  const [center] = useState<LatLngExpression>([35.6812, 139.7671]); // Tokyo Station
+  verdicts,
+  onVerdict,
+}: Props) {
   const markerRefs = useRef<Record<string, L.Marker | null>>({});
-
-  const selectedSpot = useMemo(
-    () => spots.find((s) => s.id === selectedId) ?? null,
-    [spots, selectedId],
-  );
+  const selected = spots.find((s) => s.id === selectedId) ?? null;
 
   useEffect(() => {
-    if (selectedId && markerRefs.current[selectedId]) {
-      markerRefs.current[selectedId]?.openPopup();
-    }
+    if (selectedId) markerRefs.current[selectedId]?.openPopup();
   }, [selectedId]);
 
   return (
     <MapContainer
       center={center}
-      zoom={12}
+      zoom={zoom}
       scrollWheelZoom
       className="h-full w-full"
     >
@@ -100,56 +99,34 @@ export default function Map({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {spots.map((spot) => (
-        <Marker
-          key={spot.id}
-          position={[spot.lat, spot.lng]}
-          icon={buildIcon(spot.kind, spot.id === selectedId)}
-          ref={(ref) => {
-            markerRefs.current[spot.id] = ref;
-          }}
-          eventHandlers={{
-            click: () => onSelect(spot.id),
-          }}
-        >
-          <Popup>
-            <div className="space-y-1">
-              <div className="font-semibold">{spot.name}</div>
-              {spot.nameJa && (
-                <div className="text-xs text-slate-500">{spot.nameJa}</div>
-              )}
-              <div className="text-xs uppercase tracking-wide text-ember">
-                {spot.kind === "cafe" ? "Sigara Kafesi" : "Sigara Alanı"} ·{" "}
-                {spot.city}
-              </div>
-              <p className="text-sm">{spot.description}</p>
-              {spot.hours && (
-                <div className="text-xs text-slate-500">⏰ {spot.hours}</div>
-              )}
-            </div>
-          </Popup>
-        </Marker>
-      ))}
+      {spots.map((spot) => {
+        const verdict = verdicts[spot.id] ?? null;
+        return (
+          <Marker
+            key={spot.id}
+            position={[spot.lat, spot.lng]}
+            icon={buildIcon(spot, verdict, spot.id === selectedId)}
+            ref={(ref) => {
+              markerRefs.current[spot.id] = ref;
+            }}
+            eventHandlers={{
+              click: () => onSelect(spot.id),
+              popupclose: () => onSelect(null),
+            }}
+          >
+            <Popup minWidth={260} maxWidth={300}>
+              <SpotCard
+                spot={spot}
+                verdict={verdict}
+                onVerdict={(v) => onVerdict(spot.id, v)}
+                compact
+              />
+            </Popup>
+          </Marker>
+        );
+      })}
 
-      {routeFrom && (
-        <Marker position={[routeFrom.lat, routeFrom.lng]} icon={userIcon}>
-          <Popup>Konumun</Popup>
-        </Marker>
-      )}
-
-      {routeGeometry && routeGeometry.length > 1 && (
-        <Polyline
-          positions={routeGeometry}
-          pathOptions={{ color: "#f97316", weight: 5, opacity: 0.85 }}
-        />
-      )}
-
-      <FlyTo
-        position={
-          selectedSpot ? [selectedSpot.lat, selectedSpot.lng] : null
-        }
-      />
-      <FitToRoute points={routeGeometry} />
+      <ViewController center={center} zoom={zoom} selected={selected} />
     </MapContainer>
   );
 }
