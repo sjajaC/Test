@@ -32,6 +32,17 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+const THEME_INIT = `
+(function(){
+  try {
+    var t = localStorage.getItem('theme') || 'system';
+    var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (dark) document.documentElement.classList.add('dark');
+    document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+  } catch (e) {}
+})();
+`;
+
 const SW_INIT = `
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -47,7 +58,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="tr">
+    <html lang="tr" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+      </head>
       <body className="h-full overscroll-none">
         {children}
         <script dangerouslySetInnerHTML={{ __html: SW_INIT }} />

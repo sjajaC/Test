@@ -3,9 +3,12 @@
 import {
   Compass,
   MapPin,
+  Monitor,
+  Moon,
   RefreshCw,
   Search,
   Settings2,
+  Sun,
   X,
   Trash2,
   Cigarette,
@@ -36,6 +39,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
 import { CITIES } from "@/lib/cities";
 import type { SpotKind } from "@/lib/types";
+import { useTheme, type Theme } from "@/lib/theme";
 
 type Filter = "all" | SpotKind;
 export type Tab = "map" | "list";
@@ -114,6 +118,8 @@ export default function Header(props: Props) {
     onCancelAddMode,
   } = props;
 
+  const { theme, setTheme } = useTheme();
+
   return (
     <header className="z-10 border-b bg-background pt-[env(safe-area-inset-top)] shadow-sm">
       <div className="flex items-center gap-2 px-3 py-2">
@@ -167,7 +173,11 @@ export default function Header(props: Props) {
               <Settings2 className="h-4 w-4" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
+          <SheetContent
+            side="bottom"
+            className="max-h-[85vh] overflow-y-auto"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
             <SheetHeader>
               <SheetTitle>Filtreler &amp; Ayarlar</SheetTitle>
               <SheetDescription>
@@ -247,6 +257,36 @@ export default function Header(props: Props) {
                 </div>
               )}
 
+              <div className="grid gap-1.5 rounded-md border p-3">
+                <Label className="text-sm">Tema</Label>
+                <p className="text-xs text-muted-foreground">
+                  Cihaza göre otomatik, veya elle seç.
+                </p>
+                <div className="mt-1 grid grid-cols-3 gap-1 rounded-md border bg-muted/40 p-0.5">
+                  {(
+                    [
+                      ["light", "Aydınlık", Sun],
+                      ["dark", "Karanlık", Moon],
+                      ["system", "Sistem", Monitor],
+                    ] as const
+                  ).map(([value, label, Icon]) => (
+                    <button
+                      key={value}
+                      onClick={() => setTheme(value as Theme)}
+                      className={cn(
+                        "flex items-center justify-center gap-1.5 rounded px-2 py-1.5 text-xs font-medium transition-colors",
+                        theme === value
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <Button
                 variant="outline"
                 onClick={onRefresh}
@@ -268,12 +308,12 @@ export default function Header(props: Props) {
       )}
 
       {addMode && (
-        <div className="flex items-center gap-2 border-t border-purple-200 bg-purple-50 px-3 py-1.5 text-[11px] text-purple-900">
+        <div className="flex items-center gap-2 border-t border-purple-200 bg-purple-50 px-3 py-1.5 text-[11px] text-purple-900 dark:border-purple-900 dark:bg-purple-950/60 dark:text-purple-100">
           <span>➕ Harita üzerine dokunarak yeni nokta ekle.</span>
           <Button
             size="sm"
             variant="ghost"
-            className="ml-auto h-6 px-2 text-purple-900 hover:bg-purple-200"
+            className="ml-auto h-6 px-2 text-purple-900 hover:bg-purple-200 dark:text-purple-100 dark:hover:bg-purple-900"
             onClick={onCancelAddMode}
           >
             <X className="h-3.5 w-3.5" />

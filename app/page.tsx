@@ -231,7 +231,7 @@ export default function Page() {
       />
 
       {(error || staleCache) && (
-        <div className="flex items-center gap-2 border-b bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900">
+        <div className="flex items-center gap-2 border-b bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
           {error && <span>⚠ {error}</span>}
           {staleCache && !error && <span>📦 Önbellekten gösteriliyor.</span>}
         </div>
