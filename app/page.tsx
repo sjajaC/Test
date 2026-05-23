@@ -6,6 +6,7 @@ import Header, { type Tab } from "@/components/Header";
 import ListView from "@/components/ListView";
 import BottomTabs from "@/components/BottomTabs";
 import AddSpotDialog from "@/components/AddSpotDialog";
+import { Badge } from "@/components/ui/badge";
 import { CITIES, getCity } from "@/lib/cities";
 import { findCityByCoords, haversineKm } from "@/lib/geo";
 import { fetchSpots, type FetchResult } from "@/lib/overpass";
@@ -48,8 +49,11 @@ export default function Page() {
   const autoLocatedOnce = useRef(false);
 
   const [compassMode, setCompassMode] = useState(false);
-  const { heading, error: compassError, request: requestCompass } =
-    useHeading(compassMode);
+  const {
+    heading,
+    error: compassError,
+    request: requestCompass,
+  } = useHeading(compassMode);
 
   const [addMode, setAddMode] = useState(false);
   const [addCoords, setAddCoords] = useState<{ lat: number; lng: number } | null>(
@@ -104,8 +108,6 @@ export default function Page() {
       if (detected) setCityId(detected.id);
       if (recenter) setRecenterToken((t) => t + 1);
 
-      // After the fast fix, optionally upgrade to a high-accuracy reading
-      // in the background.
       if (upgrade) {
         navigator.geolocation.getCurrentPosition(
           (p) => onSuccess(p, false),
@@ -125,7 +127,6 @@ export default function Page() {
       setLocating(false);
     };
 
-    // Fast first pass: low accuracy, short timeout, accept cached value.
     navigator.geolocation.getCurrentPosition(
       (p) => onSuccess(p, true),
       onError,
@@ -142,7 +143,11 @@ export default function Page() {
   const combinedSpots = useMemo(() => {
     const bbox = city.bbox;
     const inBbox = customSpots.filter(
-      (s) => s.lat >= bbox[0] && s.lat <= bbox[2] && s.lng >= bbox[1] && s.lng <= bbox[3],
+      (s) =>
+        s.lat >= bbox[0] &&
+        s.lat <= bbox[2] &&
+        s.lng >= bbox[1] &&
+        s.lng <= bbox[3],
     );
     return [...inBbox, ...spots];
   }, [spots, customSpots, city.bbox]);
@@ -192,7 +197,7 @@ export default function Page() {
   }, [compassMode, requestCompass]);
 
   return (
-    <main className="fixed inset-0 flex flex-col bg-slate-50">
+    <main className="fixed inset-0 flex flex-col bg-background">
       <Header
         cityId={cityId}
         setCityId={setCityId}
@@ -218,31 +223,26 @@ export default function Page() {
         compassMode={compassMode}
         onToggleCompass={onToggleCompass}
         compassError={compassError}
+        verdictExists={verdictCount.exists}
+        verdictMissing={verdictCount.missing}
+        onClearVerdicts={clearAll}
         addMode={addMode}
-        onToggleAddMode={() => setAddMode((v) => !v)}
+        onCancelAddMode={() => setAddMode(false)}
       />
 
-      {(error ||
-        staleCache ||
-        verdictCount.missing + verdictCount.exists > 0) && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-ash bg-amber-50 px-3 py-1 text-[11px] text-amber-900">
+      {(error || staleCache) && (
+        <div className="flex items-center gap-2 border-b bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900">
           {error && <span>⚠ {error}</span>}
           {staleCache && !error && <span>📦 Önbellekten gösteriliyor.</span>}
-          {verdictCount.exists + verdictCount.missing > 0 && (
-            <span className="ml-auto">
-              ✔ {verdictCount.exists} · ✗ {verdictCount.missing}
-              <button onClick={clearAll} className="ml-2 underline">
-                temizle
-              </button>
-            </span>
-          )}
         </div>
       )}
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {loading && (
-          <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full bg-ink/85 px-3 py-1 text-[11px] font-medium text-white shadow-md">
-            {city.name} verisi yükleniyor…
+          <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2">
+            <Badge variant="default" className="px-3 py-1 text-xs shadow-md">
+              {city.name} yükleniyor…
+            </Badge>
           </div>
         )}
 
@@ -268,7 +268,7 @@ export default function Page() {
         </div>
 
         <div
-          className={`absolute inset-0 overflow-y-auto bg-white ${
+          className={`absolute inset-0 overflow-y-auto bg-background ${
             tab === "list" ? "" : "hidden"
           }`}
         >

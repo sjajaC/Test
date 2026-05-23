@@ -1,11 +1,28 @@
 "use client";
 
-import type { SmokingSpot, SpotKind } from "@/lib/types";
-import type { Verdict } from "@/lib/verdict";
-import { googleMapsDirUrl } from "@/lib/url";
+import {
+  Navigation,
+  Check,
+  X,
+  Coffee,
+  Beer,
+  UtensilsCrossed,
+  Cigarette,
+  Clock,
+  MapPin,
+  Footprints,
+  ExternalLink,
+  Trash2,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { isCustomSpot, removeCustomSpot } from "@/lib/customSpots";
 import { formatDistance, haversineKm } from "@/lib/geo";
 import { isOpenNow } from "@/lib/openingHours";
-import { isCustomSpot, removeCustomSpot } from "@/lib/customSpots";
+import type { SmokingSpot, SpotKind } from "@/lib/types";
+import { googleMapsDirUrl } from "@/lib/url";
+import type { Verdict } from "@/lib/verdict";
 
 const KIND_LABEL: Record<SpotKind, string> = {
   area: "Sigara Alanı",
@@ -14,11 +31,11 @@ const KIND_LABEL: Record<SpotKind, string> = {
   restaurant: "Restoran",
 };
 
-const KIND_ICON: Record<SpotKind, string> = {
-  area: "🚬",
-  cafe: "☕",
-  bar: "🍺",
-  restaurant: "🍽️",
+const KIND_ICON: Record<SpotKind, React.ComponentType<{ className?: string }>> = {
+  area: Cigarette,
+  cafe: Coffee,
+  bar: Beer,
+  restaurant: UtensilsCrossed,
 };
 
 const SMOKING_LABEL: Record<string, string> = {
@@ -65,135 +82,136 @@ export default function SpotCard({
     : null;
   const open = isOpenNow(spot.openingHours);
   const custom = isCustomSpot(spot);
+  const Icon = KIND_ICON[spot.kind];
 
   return (
     <article
-      className={`flex flex-col gap-2 ${compact ? "" : "p-4"}`}
+      className={cn("flex flex-col gap-2", compact ? "" : "p-4")}
       onClick={onFocus}
     >
       <header className="flex items-start gap-2">
-        <span className="text-lg leading-none">{KIND_ICON[spot.kind]}</span>
+        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-semibold text-ink">
+          <h3 className="truncate text-sm font-semibold text-foreground">
             {spot.name}
           </h3>
           {spot.nameJa && (
-            <p className="truncate text-xs text-smoke">{spot.nameJa}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {spot.nameJa}
+            </p>
           )}
         </div>
         {custom && (
-          <span className="shrink-0 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700">
+          <Badge variant="primarySoft" className="shrink-0">
             Benim
-          </span>
+          </Badge>
         )}
-        {verdict && (
-          <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-              verdict === "exists"
-                ? "bg-green-100 text-green-700"
-                : "bg-red-100 text-red-700"
-            }`}
-          >
-            {verdict === "exists" ? "✔ Doğrulandı" : "✗ Mevcut değil"}
-          </span>
+        {verdict === "exists" && (
+          <Badge variant="success" className="shrink-0">
+            ✔ Doğru
+          </Badge>
+        )}
+        {verdict === "missing" && (
+          <Badge variant="destructive" className="shrink-0">
+            ✗ Yok
+          </Badge>
         )}
       </header>
 
-      <div className="flex flex-wrap gap-1 text-[11px] text-smoke">
-        <span className="rounded bg-ash/60 px-1.5 py-0.5">
-          {KIND_LABEL[spot.kind]}
-        </span>
+      <div className="flex flex-wrap gap-1">
+        <Badge variant="soft">{KIND_LABEL[spot.kind]}</Badge>
         {smokingLabel && (
-          <span className="rounded bg-ember/15 px-1.5 py-0.5 text-ember">
-            {smokingLabel}
-          </span>
+          <Badge variant="primarySoft">{smokingLabel}</Badge>
         )}
         {open === true && (
-          <span className="rounded bg-green-100 px-1.5 py-0.5 text-green-700">
-            🟢 Şu an açık
-          </span>
+          <Badge variant="success">🟢 Şu an açık</Badge>
         )}
         {open === false && (
-          <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-700">
-            🔴 Şu an kapalı
-          </span>
+          <Badge variant="destructive">🔴 Şu an kapalı</Badge>
         )}
         {spot.openingHours && (
-          <span className="rounded bg-ash/60 px-1.5 py-0.5">
-            ⏰ {spot.openingHours}
-          </span>
+          <Badge variant="soft" className="inline-flex items-center gap-1">
+            <Clock className="h-3 w-3" /> {spot.openingHours}
+          </Badge>
         )}
         {distance != null && (
-          <span className="rounded bg-blue-100 px-1.5 py-0.5 text-blue-700">
-            🚶 {formatDistance(distance)} · {formatWalkingTime(distance)}
-          </span>
+          <Badge variant="info" className="inline-flex items-center gap-1">
+            <Footprints className="h-3 w-3" />
+            {formatDistance(distance)} · {formatWalkingTime(distance)}
+          </Badge>
         )}
       </div>
 
       {spot.address && (
-        <p className="text-xs text-smoke">📍 {spot.address}</p>
+        <p className="flex items-start gap-1 text-xs text-muted-foreground">
+          <MapPin className="mt-0.5 h-3 w-3 shrink-0" /> {spot.address}
+        </p>
       )}
       {spot.raw.notes && (
-        <p className="text-xs italic text-smoke">"{spot.raw.notes}"</p>
+        <p className="text-xs italic text-muted-foreground">
+          "{spot.raw.notes}"
+        </p>
       )}
 
-      <div className="flex flex-wrap gap-2 pt-1">
-        <a
-          href={googleMapsDirUrl(spot.lat, spot.lng)}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 rounded-md bg-ember px-2.5 py-1.5 text-xs font-medium text-white hover:bg-ember/90"
-        >
-          🧭 Buraya rota
-        </a>
-        <button
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <Button asChild size="sm">
+          <a
+            href={googleMapsDirUrl(spot.lat, spot.lng)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Navigation className="h-3.5 w-3.5" />
+            Rota
+          </a>
+        </Button>
+        <Button
+          size="sm"
+          variant={verdict === "exists" ? "success" : "outline"}
           onClick={(e) => {
             e.stopPropagation();
             onVerdict(verdict === "exists" ? null : "exists");
           }}
-          className={`rounded-md border px-2.5 py-1.5 text-xs font-medium ${
-            verdict === "exists"
-              ? "border-green-600 bg-green-600 text-white"
-              : "border-green-600 text-green-700 hover:bg-green-50"
-          }`}
         >
-          ✔ Var
-        </button>
-        <button
+          <Check className="h-3.5 w-3.5" />
+          Var
+        </Button>
+        <Button
+          size="sm"
+          variant={verdict === "missing" ? "destructive" : "outline"}
           onClick={(e) => {
             e.stopPropagation();
             onVerdict(verdict === "missing" ? null : "missing");
           }}
-          className={`rounded-md border px-2.5 py-1.5 text-xs font-medium ${
-            verdict === "missing"
-              ? "border-red-600 bg-red-600 text-white"
-              : "border-red-600 text-red-700 hover:bg-red-50"
-          }`}
         >
-          ✗ Yok
-        </button>
+          <X className="h-3.5 w-3.5" />
+          Yok
+        </Button>
         {custom ? (
-          <button
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto text-destructive hover:text-destructive"
             onClick={(e) => {
               e.stopPropagation();
               if (confirm("Bu noktayı sil?")) removeCustomSpot(spot.id);
             }}
-            className="ml-auto text-[11px] text-red-600 underline hover:text-red-700"
           >
+            <Trash2 className="h-3.5 w-3.5" />
             Sil
-          </button>
+          </Button>
         ) : (
           spot.osmUrl && (
-            <a
-              href={spot.osmUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="ml-auto text-[11px] text-smoke underline hover:text-ink"
-            >
-              OSM'de gör →
-            </a>
+            <Button asChild size="sm" variant="link" className="ml-auto px-0">
+              <a
+                href={spot.osmUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                OSM <ExternalLink className="h-3 w-3" />
+              </a>
+            </Button>
           )
         )}
       </div>

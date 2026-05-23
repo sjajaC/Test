@@ -1,6 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { SpotKind } from "@/lib/types";
 
 interface Props {
@@ -15,66 +34,73 @@ export default function AddSpotDialog({ coords, onCancel, onSave }: Props) {
   const [notes, setNotes] = useState("");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center">
-      <div className="w-full max-w-md rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-2xl">
-        <h2 className="text-base font-bold text-ink">Yeni nokta ekle</h2>
-        <p className="mt-1 text-xs text-smoke">
-          {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)} — sadece sende
-          görünür (tarayıcına kaydedilir).
-        </p>
+    <Dialog open onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Yeni nokta ekle</DialogTitle>
+          <DialogDescription>
+            {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)} — sadece sende
+            görünür (tarayıcına kaydedilir).
+          </DialogDescription>
+        </DialogHeader>
 
-        <label className="mt-3 block text-xs font-medium text-ink">
-          İsim
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Örn. Shibuya istasyonu kabini"
-            className="mt-1 w-full rounded-md border border-ash bg-white px-2 py-2 text-sm"
-          />
-        </label>
+        <div className="grid gap-3">
+          <div className="grid gap-1.5">
+            <Label htmlFor="spot-name">İsim</Label>
+            <Input
+              id="spot-name"
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Örn. Shibuya istasyonu kabini"
+            />
+          </div>
 
-        <label className="mt-3 block text-xs font-medium text-ink">
-          Tür
-          <select
-            value={kind}
-            onChange={(e) => setKind(e.target.value as SpotKind)}
-            className="mt-1 w-full rounded-md border border-ash bg-white px-2 py-2 text-sm"
-          >
-            <option value="area">🚬 Sigara Alanı</option>
-            <option value="cafe">☕ Kafe</option>
-            <option value="bar">🍺 Bar / Pub</option>
-            <option value="restaurant">🍽️ Restoran</option>
-          </select>
-        </label>
+          <div className="grid gap-1.5">
+            <Label>Tür</Label>
+            <Select value={kind} onValueChange={(v) => setKind(v as SpotKind)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="area">🚬 Sigara Alanı</SelectItem>
+                <SelectItem value="cafe">☕ Kafe</SelectItem>
+                <SelectItem value="bar">🍺 Bar / Pub</SelectItem>
+                <SelectItem value="restaurant">🍽️ Restoran</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-        <label className="mt-3 block text-xs font-medium text-ink">
-          Not (opsiyonel)
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            placeholder="Üst katta, kapalı kabin, vs."
-            className="mt-1 w-full rounded-md border border-ash bg-white px-2 py-2 text-sm"
-          />
-        </label>
+          <div className="grid gap-1.5">
+            <Label htmlFor="spot-notes">Not (opsiyonel)</Label>
+            <Textarea
+              id="spot-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Üst katta, kapalı kabin, vs."
+            />
+          </div>
+        </div>
 
-        <div className="mt-4 flex gap-2">
-          <button
-            onClick={onCancel}
-            className="flex-1 rounded-md border border-ash bg-white px-3 py-2 text-sm hover:bg-ash/40"
-          >
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onCancel}>
             Vazgeç
-          </button>
-          <button
+          </Button>
+          <Button
             disabled={!name.trim()}
-            onClick={() => onSave({ name: name.trim(), kind, notes: notes.trim() || undefined })}
-            className="flex-1 rounded-md bg-ember px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            onClick={() =>
+              onSave({
+                name: name.trim(),
+                kind,
+                notes: notes.trim() || undefined,
+              })
+            }
           >
             Kaydet
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

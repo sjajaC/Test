@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import type { SmokingSpot } from "@/lib/types";
 import type { Verdict } from "@/lib/verdict";
 import SpotCard from "@/components/SpotCard";
@@ -23,22 +24,23 @@ export default function ListView({
 }: Props) {
   if (spots.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center p-8 text-center text-sm text-smoke">
-        Bu şehirde filtrelenen kriterlere uyan nokta yok.
+      <div className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground">
+        Filtreye uyan nokta yok. Filtreleri açıp gevşetmeyi dene.
       </div>
     );
   }
   return (
-    <ul className="divide-y divide-ash overflow-y-auto">
+    <ul className="divide-y">
       {spots.map((spot) => {
         const verdict = verdicts[spot.id] ?? null;
         const isSelected = spot.id === selectedId;
         return (
           <li
             key={spot.id}
-            className={`cursor-pointer transition ${
-              isSelected ? "bg-ember/10" : "hover:bg-ash/30"
-            }`}
+            className={cn(
+              "cursor-pointer p-4 transition-colors",
+              isSelected ? "bg-primary/10" : "hover:bg-muted/50",
+            )}
             onClick={() => onSelect(spot.id)}
           >
             <SpotCard
@@ -46,6 +48,7 @@ export default function ListView({
               verdict={verdict}
               onVerdict={(v) => onVerdict(spot.id, v)}
               userLocation={userLocation}
+              compact
             />
           </li>
         );
