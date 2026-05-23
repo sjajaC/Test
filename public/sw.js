@@ -1,4 +1,4 @@
-const VERSION = "smokejp-v3";
+const VERSION = "smokejp-v4";
 const APP_SHELL = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {

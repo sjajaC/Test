@@ -84,41 +84,54 @@ export default function Page() {
     load(cityId);
   }, [cityId, load]);
 
-  const locate = useCallback(
-    (recenter = true) => {
-      if (typeof navigator === "undefined" || !navigator.geolocation) {
-        setLocateError("Tarayıcı konum hizmetini desteklemiyor.");
-        return;
+  const locate = useCallback((recenter = true) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocateError("Tarayıcı konum hizmetini desteklemiyor.");
+      return;
+    }
+    setLocating(true);
+    setLocateError(null);
+
+    const onSuccess = (pos: GeolocationPosition, upgrade: boolean) => {
+      const loc: UserLocation = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+      };
+      setUserLocation(loc);
+      setLocating(false);
+      const detected = findCityByCoords(loc.lat, loc.lng, CITIES);
+      if (detected) setCityId(detected.id);
+      if (recenter) setRecenterToken((t) => t + 1);
+
+      // After the fast fix, optionally upgrade to a high-accuracy reading
+      // in the background.
+      if (upgrade) {
+        navigator.geolocation.getCurrentPosition(
+          (p) => onSuccess(p, false),
+          () => null,
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+        );
       }
-      setLocating(true);
-      setLocateError(null);
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const loc: UserLocation = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            accuracy: pos.coords.accuracy,
-          };
-          setUserLocation(loc);
-          setLocating(false);
-          const detected = findCityByCoords(loc.lat, loc.lng, CITIES);
-          if (detected && detected.id !== cityId) setCityId(detected.id);
-          if (recenter) setRecenterToken((t) => t + 1);
-        },
-        (err) => {
-          const messages: Record<number, string> = {
-            1: "Konum izni reddedildi.",
-            2: "Konum alınamadı.",
-            3: "Konum zaman aşımı.",
-          };
-          setLocateError(messages[err.code] ?? err.message ?? "Konum alınamadı.");
-          setLocating(false);
-        },
-        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
-      );
-    },
-    [cityId],
-  );
+    };
+
+    const onError = (err: GeolocationPositionError) => {
+      const messages: Record<number, string> = {
+        1: "Konum izni reddedildi.",
+        2: "Konum alınamadı.",
+        3: "Konum zaman aşımı.",
+      };
+      setLocateError(messages[err.code] ?? err.message ?? "Konum alınamadı.");
+      setLocating(false);
+    };
+
+    // Fast first pass: low accuracy, short timeout, accept cached value.
+    navigator.geolocation.getCurrentPosition(
+      (p) => onSuccess(p, true),
+      onError,
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
+    );
+  }, []);
 
   useEffect(() => {
     if (autoLocatedOnce.current) return;
@@ -227,9 +240,9 @@ export default function Page() {
       )}
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        {loading && spots.length === 0 && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 text-sm text-smoke">
-            {city.name} verisi çekiliyor...
+        {loading && (
+          <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full bg-ink/85 px-3 py-1 text-[11px] font-medium text-white shadow-md">
+            {city.name} verisi yükleniyor…
           </div>
         )}
 
