@@ -6,10 +6,11 @@ import Header, { type Tab } from "@/components/Header";
 import ListView from "@/components/ListView";
 import BottomTabs from "@/components/BottomTabs";
 import AddSpotDialog from "@/components/AddSpotDialog";
+import { RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CITIES, getCity } from "@/lib/cities";
 import { findCityByCoords, haversineKm } from "@/lib/geo";
-import { fetchSpots, type FetchResult } from "@/lib/overpass";
+import { fetchSpots, peekCachedSpots, type FetchResult } from "@/lib/overpass";
 import type { SmokingSpot, SpotKind } from "@/lib/types";
 import { useVerdicts } from "@/lib/verdict";
 import { useCustomSpots, addCustomSpot } from "@/lib/customSpots";
@@ -67,13 +68,26 @@ export default function Page() {
 
   const load = useCallback(async (id: string, force = false) => {
     const c = getCity(id);
+
+    // Cache-first: show stored points instantly, no network unless forced.
+    if (!force) {
+      const cached = peekCachedSpots(c.id);
+      if (cached) {
+        setSpots(cached.spots);
+        setFetchedAt(cached.fetchedAt);
+        setStaleCache(cached.staleCache);
+        setError(null);
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const res: FetchResult = await fetchSpots(c.id, c.bbox, { force });
+      const res: FetchResult = await fetchSpots(c.id, c.bbox, { force: true });
       setSpots(res.spots);
       setFetchedAt(res.fetchedAt);
-      setStaleCache(res.staleCache);
+      setStaleCache(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Bilinmeyen hata";
       setError(msg);
@@ -88,15 +102,11 @@ export default function Page() {
     load(cityId);
   }, [cityId, load]);
 
-  const locate = useCallback((recenter = true) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setLocateError("Tarayıcı konum hizmetini desteklemiyor.");
-      return;
-    }
-    setLocating(true);
-    setLocateError(null);
-
-    const onSuccess = (pos: GeolocationPosition, upgrade: boolean) => {
+  const applyPosition = useCallback(
+    (
+      pos: GeolocationPosition,
+      opts: { recenter: boolean; switchCity: boolean },
+    ) => {
       const loc: UserLocation = {
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
@@ -104,41 +114,73 @@ export default function Page() {
       };
       setUserLocation(loc);
       setLocating(false);
-      const detected = findCityByCoords(loc.lat, loc.lng, CITIES);
-      if (detected) setCityId(detected.id);
-      if (recenter) setRecenterToken((t) => t + 1);
-
-      if (upgrade) {
-        navigator.geolocation.getCurrentPosition(
-          (p) => onSuccess(p, false),
-          () => null,
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-        );
+      if (opts.switchCity) {
+        const detected = findCityByCoords(loc.lat, loc.lng, CITIES);
+        if (detected) setCityId(detected.id);
       }
-    };
+      if (opts.recenter) setRecenterToken((t) => t + 1);
+    },
+    [],
+  );
 
-    const onError = (err: GeolocationPositionError) => {
-      const messages: Record<number, string> = {
-        1: "Konum izni reddedildi.",
-        2: "Konum alınamadı.",
-        3: "Konum zaman aşımı.",
+  const locate = useCallback(
+    (recenter = true, switchCity = false) => {
+      if (typeof navigator === "undefined" || !navigator.geolocation) {
+        setLocateError("Tarayıcı konum hizmetini desteklemiyor.");
+        return;
+      }
+      setLocating(true);
+      setLocateError(null);
+
+      const onError = (err: GeolocationPositionError) => {
+        const messages: Record<number, string> = {
+          1: "Konum izni reddedildi.",
+          2: "Konum alınamadı.",
+          3: "Konum zaman aşımı.",
+        };
+        setLocateError(
+          messages[err.code] ?? err.message ?? "Konum alınamadı.",
+        );
+        setLocating(false);
       };
-      setLocateError(messages[err.code] ?? err.message ?? "Konum alınamadı.");
-      setLocating(false);
-    };
 
-    navigator.geolocation.getCurrentPosition(
-      (p) => onSuccess(p, true),
-      onError,
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
-    );
-  }, []);
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          applyPosition(p, { recenter, switchCity });
+          // Background high-accuracy refine: only nudge the marker, never
+          // move the view or change the selected city.
+          navigator.geolocation.getCurrentPosition(
+            (p2) => applyPosition(p2, { recenter: false, switchCity: false }),
+            () => null,
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+          );
+        },
+        onError,
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
+      );
+    },
+    [applyPosition],
+  );
 
   useEffect(() => {
     if (autoLocatedOnce.current) return;
     autoLocatedOnce.current = true;
-    locate(true);
+    locate(true, true);
   }, [locate]);
+
+  const goToMyLocation = useCallback(() => {
+    if (userLocation) {
+      const detected = findCityByCoords(
+        userLocation.lat,
+        userLocation.lng,
+        CITIES,
+      );
+      if (detected) setCityId(detected.id);
+      setRecenterToken((t) => t + 1);
+    } else {
+      locate(true, true);
+    }
+  }, [userLocation, locate]);
 
   const combinedSpots = useMemo(() => {
     const bbox = city.bbox;
@@ -217,9 +259,7 @@ export default function Page() {
         hasUserLocation={!!userLocation}
         locating={locating}
         locateError={locateError}
-        onLocate={() =>
-          userLocation ? setRecenterToken((t) => t + 1) : locate(true)
-        }
+        onLocate={goToMyLocation}
         compassMode={compassMode}
         onToggleCompass={onToggleCompass}
         compassError={compassError}
@@ -238,13 +278,23 @@ export default function Page() {
       )}
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        {loading && (
-          <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2">
+        <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2">
+          {loading ? (
             <Badge variant="default" className="px-3 py-1 text-xs shadow-md">
               {city.name} yükleniyor…
             </Badge>
-          </div>
-        )}
+          ) : (
+            <button
+              onClick={() => load(cityId, true)}
+              className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1 text-[11px] font-medium text-foreground shadow-md backdrop-blur active:scale-95"
+            >
+              <RefreshCw className="h-3 w-3" />
+              {filteredSpots.length} nokta
+              {staleCache && <span className="text-amber-600">· eski</span>}
+              <span className="text-muted-foreground">· yenile</span>
+            </button>
+          )}
+        </div>
 
         <div className={`absolute inset-0 ${tab === "map" ? "" : "invisible"}`}>
           <Map

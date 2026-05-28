@@ -1,4 +1,4 @@
-const VERSION = "smokejp-v6-darkmode";
+const VERSION = "smokejp-v7-cache";
 const APP_SHELL = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {

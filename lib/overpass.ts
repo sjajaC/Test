@@ -117,6 +117,20 @@ export interface FetchResult {
   fetchedAt: number;
 }
 
+// Returns whatever is cached for this city regardless of age, or null.
+// Lets the UI render instantly and leave refreshing to an explicit action.
+export function peekCachedSpots(cityId: string): FetchResult | null {
+  const cache = readCache();
+  const entry = cache[cityId];
+  if (!entry) return null;
+  return {
+    spots: entry.spots,
+    fromCache: true,
+    staleCache: Date.now() - entry.ts >= CACHE_TTL_MS,
+    fetchedAt: entry.ts,
+  };
+}
+
 export async function fetchSpots(
   cityId: string,
   bbox: [number, number, number, number],
